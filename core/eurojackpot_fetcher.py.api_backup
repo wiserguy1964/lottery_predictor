@@ -1,0 +1,218 @@
+"""
+EUROJACKPOT Data Fetcher - Lottoland API
+
+Fetches EUROJACKPOT data from Lottoland API with proper browser headers
+to bypass anti-bot protection.
+"""
+
+import requests
+import time
+from datetime import datetime
+from typing import List, Optional
+import numpy as np
+import urllib3
+
+from config import LotteryConfig
+from models import Draw
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+class EurojackpotDataFetcher:
+    """Fetches EUROJACKPOT draw data from Lottoland API"""
+    
+    BASE_URL = "https://media.lottoland.com/api/drawings/euroJackpot"
+    DRAW_URL = "https://www.lottoland.com/api/drawings/euroJackpot/{draw_number}"
+    
+    def __init__(self, lottery_config: LotteryConfig):
+        self.config = lottery_config
+        self.session = requests.Session()
+        
+        # IMPORTANT: Comprehensive browser headers to bypass anti-bot
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Referer': 'https://www.lottoland.com/',
+            'Origin': 'https://www.lottoland.com',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-site',
+            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+        })
+    
+    def fetch_draws(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        max_draws: int = 0
+    ) -> List[Draw]:
+        """Fetch EUROJACKPOT draws from Lottoland API"""
+        
+        if start_date is None:
+            start_date = self.config.min_date
+        
+        if end_date is None:
+            end_date = datetime.now()
+        
+        print(f"Fetching EUROJACKPOT draws...")
+        
+        # Get current draw number
+        try:
+            response = self.session.get(self.BASE_URL, timeout=15, verify=False)
+            response.raise_for_status()
+            
+            # Check if we got valid JSON
+            try:
+                data = response.json()
+            except ValueError:
+                print(f"Error: API returned non-JSON response")
+                print(f"Response content: {response.text[:200]}")
+                return []
+            
+            if 'last' not in data:
+                print(f"Error: Unexpected API response format")
+                return []
+            
+            current_draw_num = data['last']['nr']
+            print(f"Current draw: {current_draw_num}")
+            
+        except Exception as e:
+            print(f"Error fetching current draw: {e}")
+            return []
+        
+        # Estimate draws needed
+        years = (end_date - start_date).days / 365.25
+        estimated = int(years * 104)  # 2 draws per week
+        
+        if max_draws > 0:
+            estimated = min(estimated, max_draws)
+        
+        print(f"Fetching up to {estimated} draws...")
+        
+        # Fetch draws backwards
+        all_draws = []
+        failed_count = 0
+        max_consecutive_fails = 10
+        
+        for draw_num in range(current_draw_num, max(0, current_draw_num - estimated - 20), -1):
+            if max_draws > 0 and len(all_draws) >= max_draws:
+                break
+            
+            if failed_count >= max_consecutive_fails:
+                print(f"  Stopping: {max_consecutive_fails} consecutive failures")
+                break
+            
+            draw = self._fetch_single_draw(draw_num)
+            
+            if draw:
+                failed_count = 0  # Reset fail counter
+                
+                if draw.date:
+                    if draw.date < start_date:
+                        break
+                    if draw.date <= end_date:
+                        all_draws.append(draw)
+                        
+                        if len(all_draws) % 50 == 0:
+                            print(f"  Fetched {len(all_draws)} draws...")
+                else:
+                    all_draws.append(draw)
+            else:
+                failed_count += 1
+            
+            # Polite delay
+            time.sleep(0.15)
+        
+        # Sort by date (oldest first)
+        all_draws.sort(key=lambda d: d.date if d.date else datetime.min)
+        print(f"Total: {len(all_draws)} draws fetched")
+        
+        return all_draws
+    
+    def _fetch_single_draw(self, draw_number: int, retries: int = 2) -> Optional[Draw]:
+        """Fetch a single draw by number"""
+        
+        url = f"https://www.lottoland.com/api/drawings/euroJackpot/{draw_number}"
+        
+        for attempt in range(retries):
+            try:
+                response = self.session.get(url, timeout=10, verify=False)
+                
+                if response.status_code == 404:
+                    return None
+                
+                response.raise_for_status()
+                
+                # Parse JSON
+                try:
+                    data = response.json()
+                except ValueError:
+                    # Not JSON, skip
+                    return None
+                
+                # Extract draw data
+                if 'last' in data:
+                    draw_data = data['last']
+                else:
+                    draw_data = data
+                
+                # Parse date
+                date_info = draw_data.get('date', {})
+                if isinstance(date_info, dict):
+                    draw_date = datetime(
+                        date_info.get('year', 2012),
+                        date_info.get('month', 1),
+                        date_info.get('day', 1)
+                    )
+                else:
+                    draw_date = None
+                
+                # Get numbers
+                main_nums = draw_data.get('numbers', [])
+                euro_nums = draw_data.get('euroNumbers', [])
+                
+                if not main_nums or not euro_nums:
+                    return None
+                
+                return Draw(
+                    draw_id=str(draw_data.get('nr', draw_number)),
+                    date=draw_date,
+                    main_numbers=np.array(main_nums, dtype=int),
+                    bonus_numbers=np.array(euro_nums, dtype=int)
+                )
+                
+            except requests.exceptions.RequestException:
+                if attempt < retries - 1:
+                    time.sleep(0.5)
+                else:
+                    return None
+            except Exception:
+                return None
+        
+        return None
+
+
+if __name__ == '__main__':
+    # Test the fetcher
+    from config import get_lottery_config
+    
+    print("Testing EUROJACKPOT fetcher with proper headers...")
+    
+    config = get_lottery_config('EUROJACKPOT')
+    fetcher = EurojackpotDataFetcher(config)
+    
+    # Fetch last 5 draws
+    draws = fetcher.fetch_draws(max_draws=5)
+    
+    if draws:
+        print(f"\n✅ SUCCESS! Fetched {len(draws)} draws:")
+        for draw in draws:
+            print(f"  {draw.draw_id}: {draw.main_numbers} + {draw.bonus_numbers}")
+    else:
+        print("\n❌ FAILED - no draws fetched")

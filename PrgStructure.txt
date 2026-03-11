@@ -1,0 +1,47 @@
+lottery_predictor/
+├── lottery_config.xlsx          ⭐ Excel configuration
+├── config.py                     Configuration loader
+├── main.py                       Main application (CLI)
+├── requirements.txt              Dependencies
+│
+├── README.md                     Full documentation
+├── QUICK_START.md               Getting started guide
+├── IMPLEMENTATION_GUIDE.md      Technical guide
+├── PROJECT_SUMMARY.md           Overview
+│
+├── core/
+│   ├── __init__.py
+│   └── data_fetcher.py          OPAP API + data loading
+│
+├── models/
+│   └── __init__.py              Draw & Prediction models
+│
+├── analyzers/
+│   ├── __init__.py
+│   ├── frequency_analyzer.py    Frequency & patterns
+│   └── state_machine.py         State machines & Markov
+│
+├── strategies/
+│   ├── __init__.py
+│   ├── base_strategy.py         Abstract base class
+│   ├── strat01_state_frequency.py
+│   ├── strat02_pure_frequency.py
+│   ├── strat03_state_random.py
+│   ├── strat04_avoid_recent.py
+│   ├── strat05_markov_chain.py
+│   └── strat07_ensemble.py
+│
+├── predictors/
+│   ├── __init__.py
+│   └── joker_predictor.py       4-method Joker prediction
+│
+├── backtesting/
+│   ├── __init__.py
+│   └── rolling_window.py        Backtest engine
+│
+├── visualization/
+│   ├── __init__.py
+│   └── excel_exporter.py        Excel export
+│
+└── utils/
+    └── __init__.py

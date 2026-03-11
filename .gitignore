@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project specific
+data/*.npz
+data/*.pkl
+output/*.xlsx
+output/*.csv
+*.backup*
+*.backup_*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# Excel temporary files
+~$*.xlsx
+~$*.xls
+
+# Don't upload actual draw data (too large)
+data/*_history.npz
+
+# Keep data directory but ignore contents
+data/*
+!data/.gitkeep
+
+# Keep output directory but ignore contents  
+output/*
+!output/.gitkeep

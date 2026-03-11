@@ -1,0 +1,7 @@
+python main.py --lottery OPAP_JOKER --fetch
+
+python main.py --lottery OPAP_JOKER --fetch-new --predict --wheel
+
+python main.py --lottery OPAP_JOKER --fetch-new  --backtest --predict --wheel   
+
+python main.py --lottery OPAP_JOKER --backtest --strategies STRAT01 STRAT02 STRAT03 STRAT04 STRAT05 --predict --wheel
