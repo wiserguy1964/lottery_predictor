@@ -17,6 +17,7 @@ from strategies.strat04_avoid_recent import Strategy04_AvoidRecent
 from strategies.strat05_markov_chain import Strategy05_MarkovChain
 from strategies.strat08_multi_signal import Strategy08_MultiSignalConsensus
 from strategies.strat09_monte_carlo import Strategy09_MonteCarloPattern
+from strategies.strat10_distance_gaps import Strategy10_DistanceGaps
 from strategies.strat07_ensemble import Strategy07_AdaptiveEnsemble
 from predictors.joker_predictor import JokerPredictor
 from backtesting.rolling_window import RollingWindowBacktester
@@ -87,7 +88,7 @@ def main():
     parser.add_argument(
         '--strategies',
         nargs='+',
-        choices=['STRAT01', 'STRAT02', 'STRAT02b', 'STRAT02c', 'STRAT03', 'STRAT04', 'STRAT05', 'STRAT07', 'STRAT08', 'STRAT09', 'ALL'],
+        choices=['STRAT01', 'STRAT02', 'STRAT02b', 'STRAT02c', 'STRAT03', 'STRAT04', 'STRAT05', 'STRAT07', 'STRAT08', 'STRAT09', 'STRAT10', 'ALL'],
         default=['ALL'],
         help='Strategies to test (default: ALL)'
     )
@@ -170,6 +171,7 @@ def main():
         'STRAT05': Strategy05_MarkovChain(lottery_config),
         'STRAT08': Strategy08_MultiSignalConsensus(lottery_config),
         'STRAT09': Strategy09_MonteCarloPattern(lottery_config),
+        'STRAT10': Strategy10_DistanceGaps(lottery_config),
     }
     
     # Select strategies to use
