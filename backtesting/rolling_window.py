@@ -40,6 +40,69 @@ class RollingWindowBacktester:
         """Add a strategy to test"""
         self.strategies.append(strategy)
     
+
+    def calculate_calibrated_confidence(
+        self,
+        strategy_results: Dict[str, List],
+        window_count: int = 50
+    ) -> float:
+        """
+        Calculate confidence based on actual recent performance.
+        
+        Uses the last N windows to determine how well the strategy
+        actually performed, not arbitrary self-assessment.
+        
+        Args:
+            strategy_results: Results from backtesting
+            window_count: Number of recent windows to analyze (default 50)
+            
+        Returns:
+            Calibrated confidence score (0-0.95)
+        """
+        if 'main_matches' not in strategy_results or not strategy_results['main_matches']:
+            return 0.3  # Default low confidence if no data
+        
+        # Get recent results (last N windows)
+        recent_matches = strategy_results['main_matches'][-window_count:]
+        
+        if not recent_matches:
+            return 0.3
+        
+        # Calculate average performance
+        avg_matches = np.mean(recent_matches)
+        
+        # Calculate random expectation
+        random_expectation = (
+            self.lottery_config.main_play_count * self.lottery_config.main_count
+        ) / self.lottery_config.main_pool
+        
+        # Confidence = performance relative to random
+        if random_expectation > 0:
+            confidence = avg_matches / random_expectation
+            # Normalize to 0-0.95 range
+            # 1.0 = random (50% confidence)
+            # 1.1 = 10% better (60% confidence)
+            # 1.2 = 20% better (70% confidence)
+            # 1.3 = 30% better (80% confidence)
+            # 1.4+ = 40%+ better (90%+ confidence)
+            
+            if confidence < 0.9:
+                calibrated = 0.3  # Worse than random
+            elif confidence < 1.0:
+                calibrated = 0.3 + (confidence - 0.9) * 2.0  # 0.3-0.5
+            elif confidence < 1.1:
+                calibrated = 0.5 + (confidence - 1.0) * 1.0  # 0.5-0.6
+            elif confidence < 1.2:
+                calibrated = 0.6 + (confidence - 1.1) * 1.0  # 0.6-0.7
+            elif confidence < 1.3:
+                calibrated = 0.7 + (confidence - 1.2) * 1.0  # 0.7-0.8
+            else:
+                calibrated = 0.8 + min((confidence - 1.3) * 0.75, 0.15)  # 0.8-0.95
+            
+            return min(calibrated, 0.95)
+        
+        return 0.5
+
     def run_backtest(
         self,
         draws: List[Draw],
@@ -234,6 +297,9 @@ class RollingWindowBacktester:
             # Scale to 0-100
             composite_score = composite * 100
             
+            # Calculate calibrated confidence from actual performance
+            calibrated_confidence = self.calculate_calibrated_confidence(strategy_results, window_count=50)
+            
             summaries[strategy_id] = {
                 'avg_main_matches': avg_main_matches,
                 'joker_accuracy': joker_accuracy,
@@ -241,7 +307,8 @@ class RollingWindowBacktester:
                 'hl_accuracy': hl_accuracy,
                 'sum_accuracy': sum_accuracy,
                 'pattern_accuracy': pattern_accuracy,
-                'avg_confidence': avg_confidence,
+                'avg_confidence': avg_confidence,  # Keep original for comparison
+                'calibrated_confidence': calibrated_confidence,  # NEW: Actual accuracy
                 'composite_score': composite_score,
                 'test_count': len(strategy_results['main_matches'])
             }
@@ -264,13 +331,13 @@ class RollingWindowBacktester:
         summaries: Dict[str, Dict[str, float]]
     ) -> List[Tuple[str, float]]:
         """
-        Rank strategies by composite score
+        Rank strategies by main matches (what actually wins prizes!)
         
         Args:
             summaries: Summary metrics
             
         Returns:
-            List of (strategy_id, composite_score) tuples, sorted descending
+            List of (strategy_id, avg_main_matches) tuples, sorted descending
         """
         rankings = []
         
@@ -278,8 +345,9 @@ class RollingWindowBacktester:
             if strategy_id == '_JOKER_METHODS':
                 continue
             
-            if 'composite_score' in metrics:
-                rankings.append((strategy_id, metrics['composite_score']))
+            # Rank by main matches instead of composite score
+            if 'avg_main_matches' in metrics:
+                rankings.append((strategy_id, metrics['avg_main_matches']))
         
         rankings.sort(key=lambda x: -x[1])
         
