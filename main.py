@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 from datetime import datetime
+import numpy as np
 
 from config import get_lottery_config, get_backtest_config
 from core.data_fetcher import DrawDataLoader
@@ -18,7 +19,7 @@ from strategies.strat05_markov_chain import Strategy05_MarkovChain
 from strategies.strat08_multi_signal import Strategy08_MultiSignalConsensus
 from strategies.strat09_monte_carlo import Strategy09_MonteCarloPattern
 from strategies.strat10_distance_gaps import Strategy10_DistanceGaps
-from strategies.strat07_ensemble import Strategy07_AdaptiveEnsemble
+#from strategies.strat07_ensemble import Strategy07_AdaptiveEnsemble
 from predictors.joker_predictor import JokerPredictor
 from backtesting.rolling_window import RollingWindowBacktester
 from visualization.excel_exporter import ExcelExporter
@@ -314,7 +315,7 @@ def main():
                 predicted_bonuses = joker_predictor.predict_dynamic(draws, start_idx, end_idx)
             
             # Ensure bonus_numbers is a list with correct count
-            import numpy as np
+            
             if isinstance(predicted_bonuses, int):
                 bonus_list = [predicted_bonuses]
             elif isinstance(predicted_bonuses, (list, tuple)):

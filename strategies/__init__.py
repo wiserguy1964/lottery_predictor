@@ -30,7 +30,7 @@ from .strat02_pure_frequency import Strategy02_PureFrequency
 from .strat03_state_random import Strategy03_StatePatternRandom
 from .strat04_avoid_recent import Strategy04_AvoidRecent
 from .strat05_markov_chain import Strategy05_MarkovChain
-from .strat07_ensemble import Strategy07_AdaptiveEnsemble
+#from .strat07_ensemble import Strategy07_AdaptiveEnsemble
 
 __all__ = [
     'BaseStrategy',
@@ -52,7 +52,7 @@ STRATEGY_MAP = {
     'STRAT03': Strategy03_StatePatternRandom,
     'STRAT04': Strategy04_AvoidRecent,
     'STRAT05': Strategy05_MarkovChain,
-    'STRAT07': Strategy07_AdaptiveEnsemble,
+    #'STRAT07': Strategy07_AdaptiveEnsemble,
 }
 
 
