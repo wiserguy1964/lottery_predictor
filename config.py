@@ -51,6 +51,7 @@ class BacktestConfig:
     """Backtesting and analysis parameters"""
     window_size: int = 90
     step_size: int = 5
+    confidence_window_count: int = 100  # Windows to use for confidence calculation
     min_tests_required: int = 20
     max_wheel_size: int = 20
     wheel_ticket_size: int = 5
@@ -265,6 +266,7 @@ class ConfigLoader:
             config = BacktestConfig(
                 window_size=params.get('window_size', 90),
                 step_size=params.get('step_size', 5),
+                confidence_window_count=params.get('confidence_window_count', 100),
                 min_tests_required=params.get('min_tests_required', 20),
                 max_wheel_size=params.get('max_wheel_size', 20),
                 wheel_ticket_size=params.get('wheel_ticket_size', 5),
@@ -280,6 +282,7 @@ class ConfigLoader:
             print(f"  ✓ Loaded backtest config from Excel:")
             print(f"    - window_size: {config.window_size}")
             print(f"    - step_size: {config.step_size}")
+            print(f"    - confidence_window_count: {config.confidence_window_count}")
             
             return config
             

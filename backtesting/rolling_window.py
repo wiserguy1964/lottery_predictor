@@ -44,64 +44,68 @@ class RollingWindowBacktester:
     def calculate_calibrated_confidence(
         self,
         strategy_results: Dict[str, List],
-        window_count: int = 50
-    ) -> float:
+        window_count: int = 100
+    ) -> Tuple[float, float, float]:
         """
         Calculate confidence based on actual recent performance.
         
-        Uses the last N windows to determine how well the strategy
-        actually performed, not arbitrary self-assessment.
+        Returns both overall and recent performance for transparency.
+        Uses less conservative thresholds for more reasonable confidence scores.
         
         Args:
             strategy_results: Results from backtesting
-            window_count: Number of recent windows to analyze (default 50)
+            window_count: Number of recent windows to analyze (from config)
             
         Returns:
-            Calibrated confidence score (0-0.95)
+            Tuple of (calibrated_confidence, recent_avg, overall_avg)
         """
         if 'main_matches' not in strategy_results or not strategy_results['main_matches']:
-            return 0.3  # Default low confidence if no data
+            return 0.3, 0.0, 0.0  # Default low confidence if no data
         
-        # Get recent results (last N windows)
-        recent_matches = strategy_results['main_matches'][-window_count:]
+        all_matches = strategy_results['main_matches']
         
-        if not recent_matches:
-            return 0.3
+        if not all_matches:
+            return 0.3, 0.0, 0.0
         
-        # Calculate average performance
-        avg_matches = np.mean(recent_matches)
+        # Calculate both overall and recent performance
+        overall_avg = np.mean(all_matches)
+        
+        # Get recent results (last N windows, but not more than available)
+        window_count = min(window_count, len(all_matches))
+        recent_matches = all_matches[-window_count:]
+        recent_avg = np.mean(recent_matches)
         
         # Calculate random expectation
         random_expectation = (
             self.lottery_config.main_play_count * self.lottery_config.main_count
         ) / self.lottery_config.main_pool
         
-        # Confidence = performance relative to random
+        # Use recent performance for confidence (but return both for display)
         if random_expectation > 0:
-            confidence = avg_matches / random_expectation
-            # Normalize to 0-0.95 range
+            ratio = recent_avg / random_expectation
+            
+            # Less conservative thresholds:
             # 1.0 = random (50% confidence)
-            # 1.1 = 10% better (60% confidence)
-            # 1.2 = 20% better (70% confidence)
-            # 1.3 = 30% better (80% confidence)
-            # 1.4+ = 40%+ better (90%+ confidence)
+            # 1.05 = 5% better (60% confidence)
+            # 1.10 = 10% better (70% confidence)
+            # 1.15+ = 15%+ better (80%+ confidence)
             
-            if confidence < 0.9:
-                calibrated = 0.3  # Worse than random
-            elif confidence < 1.0:
-                calibrated = 0.3 + (confidence - 0.9) * 2.0  # 0.3-0.5
-            elif confidence < 1.1:
-                calibrated = 0.5 + (confidence - 1.0) * 1.0  # 0.5-0.6
-            elif confidence < 1.2:
-                calibrated = 0.6 + (confidence - 1.1) * 1.0  # 0.6-0.7
-            elif confidence < 1.3:
-                calibrated = 0.7 + (confidence - 1.2) * 1.0  # 0.7-0.8
+            if ratio < 0.95:
+                calibrated = 0.35  # Significantly worse than random
+            elif ratio < 1.0:
+                calibrated = 0.35 + (ratio - 0.95) * 3.0  # 0.35-0.50
+            elif ratio < 1.05:
+                calibrated = 0.50 + (ratio - 1.0) * 2.0  # 0.50-0.60
+            elif ratio < 1.10:
+                calibrated = 0.60 + (ratio - 1.05) * 2.0  # 0.60-0.70
+            elif ratio < 1.15:
+                calibrated = 0.70 + (ratio - 1.10) * 2.0  # 0.70-0.80
             else:
-                calibrated = 0.8 + min((confidence - 1.3) * 0.75, 0.15)  # 0.8-0.95
+                calibrated = 0.80 + min((ratio - 1.15) * 1.0, 0.15)  # 0.80-0.95
             
-            return min(calibrated, 0.95)
+            return min(calibrated, 0.95), recent_avg, overall_avg
         
-        return 0.5
+        return 0.5, recent_avg, overall_avg
 
     def run_backtest(
         self,
@@ -298,17 +302,22 @@ class RollingWindowBacktester:
             composite_score = composite * 100
             
             # Calculate calibrated confidence from actual performance
-            calibrated_confidence = self.calculate_calibrated_confidence(strategy_results, window_count=50)
+            calibrated_confidence, recent_avg, overall_avg = self.calculate_calibrated_confidence(
+                strategy_results, 
+                window_count=self.backtest_config.confidence_window_count
+            )
             
             summaries[strategy_id] = {
-                'avg_main_matches': avg_main_matches,
+                'avg_main_matches': avg_main_matches,  # Overall performance
+                'recent_main_matches': recent_avg,  # Recent performance  
+                'overall_main_matches': overall_avg,  # Same as avg_main_matches for clarity
                 'joker_accuracy': joker_accuracy,
                 'oe_accuracy': oe_accuracy,
                 'hl_accuracy': hl_accuracy,
                 'sum_accuracy': sum_accuracy,
                 'pattern_accuracy': pattern_accuracy,
                 'avg_confidence': avg_confidence,  # Keep original for comparison
-                'calibrated_confidence': calibrated_confidence,  # NEW: Actual accuracy
+                'calibrated_confidence': calibrated_confidence,  # Based on recent performance
                 'composite_score': composite_score,
                 'test_count': len(strategy_results['main_matches'])
             }
