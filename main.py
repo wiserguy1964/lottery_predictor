@@ -218,6 +218,11 @@ def main():
                 metrics = summaries[strategy_id]
                 print(f"\n{rank}. {strategy_id} (Score: {score:.1f})")
                 print(f"   Main Matches: {metrics['avg_main_matches']:.3f}")
+                
+                # Show distribution info for STRAT04
+                if metrics.get('distribution_info'):
+                    print(f"   Distribution: {metrics['distribution_info']}")
+                
                 print(f"   Joker Accuracy: {metrics['joker_accuracy']:.2%}")
                 print(f"   OE Accuracy: {metrics['oe_accuracy']:.2%}")
                 print(f"   HL Accuracy: {metrics['hl_accuracy']:.2%}")

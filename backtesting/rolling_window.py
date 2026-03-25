@@ -307,6 +307,15 @@ class RollingWindowBacktester:
                 window_count=self.backtest_config.confidence_window_count
             )
             
+            # Extract strategy-specific info (e.g., distribution for STRAT04)
+            distribution_info = None
+            if strategy_id == 'STRAT04':
+                # Get distribution from strategy instance
+                for strat in self.strategies:
+                    if strat.strategy_id == 'STRAT04':
+                        distribution_info = f"{strat.recent_count}R+{strat.preprevious_count}P"
+                        break
+            
             summaries[strategy_id] = {
                 'avg_main_matches': avg_main_matches,  # Overall performance
                 'recent_main_matches': recent_avg,  # Recent performance  
@@ -319,7 +328,8 @@ class RollingWindowBacktester:
                 'avg_confidence': avg_confidence,  # Keep original for comparison
                 'calibrated_confidence': calibrated_confidence,  # Based on recent performance
                 'composite_score': composite_score,
-                'test_count': len(strategy_results['main_matches'])
+                'test_count': len(strategy_results['main_matches']),
+                'distribution_info': distribution_info  # For STRAT04: shows recent+pre-previous split
             }
         
         # Add joker methods summary
