@@ -331,6 +331,17 @@ def main():
             
             prediction.bonus_numbers = sorted(bonus_list[:lottery_config.bonus_play_count])
             
+            # Override confidence with calibrated confidence from backtest if available
+            if args.backtest and 'best_metrics' in locals() and best_metrics:
+                calibrated_conf = best_metrics.get('calibrated_confidence')
+                if calibrated_conf is not None:
+                    # Use calibrated confidence from actual backtest performance
+                    prediction.confidence_score = calibrated_conf
+                    print(f"\n  ℹ️  Using calibrated confidence from backtest: {calibrated_conf:.1%}")
+                    if 'recent_main_matches' in best_metrics and 'overall_main_matches' in best_metrics:
+                        print(f"     Overall performance: {best_metrics['overall_main_matches']:.3f}")
+                        print(f"     Recent performance: {best_metrics['recent_main_matches']:.3f}")
+            
             # Display prediction
             print("\n" + "=" * 70)
             print("RECOMMENDATION FOR NEXT DRAW")
