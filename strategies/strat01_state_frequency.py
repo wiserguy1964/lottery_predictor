@@ -1,6 +1,12 @@
 """
-Strategy 01: State Patterns + Frequency (Original Algorithm)
-Combines state machine pattern recognition with frequency analysis
+Strategy 01: State Patterns + Frequency with Pattern Fit Weighting
+
+Combines state machine pattern recognition with weighted number scoring:
+- Frequency (80%): How often the number appears
+- Pattern Fit (20%): How well it matches predicted OE/HL patterns
+
+Uses OE and HL pattern constraints only (no sum constraint).
+NO gap analysis - pure frequency focus.
 """
 from typing import List
 import numpy as np
@@ -14,10 +20,15 @@ from config import LotteryConfig
 
 class Strategy01_StatePatternFreq(BaseStrategy):
     """
-    State Patterns + Frequency Strategy
+    State Patterns + Frequency with Pattern Fit Strategy
     
-    Uses Markov-like state machines for Odd/Even, High/Low, and Sum Bracket patterns.
-    Selects numbers based on frequency while matching predicted patterns.
+    Uses Markov-like state machines for Odd/Even and High/Low pattern prediction.
+    Selects numbers using weighted scoring:
+    - Frequency (80%): Appearance frequency in window
+    - Pattern Fit (20%): Match with predicted OE/HL patterns
+    
+    No sum constraint - only OE and HL patterns enforced.
+    No gap analysis - focuses purely on frequency.
     """
     
     def __init__(self, lottery_config: LotteryConfig):
@@ -26,13 +37,156 @@ class Strategy01_StatePatternFreq(BaseStrategy):
         self.state_machine = StateMachine(lottery_config)
         self.pattern_analyzer = PatternAnalyzer(lottery_config)
     
+    def calculate_weighted_scores(
+        self,
+        draws: List[Draw],
+        start_idx: int,
+        end_idx: int,
+        predicted_oe: str,
+        predicted_hl: str
+    ) -> List:
+        """
+        Calculate weighted score for each number
+        
+        Score = (Frequency × 0.8) + (Pattern Fit × 0.2)
+        
+        Returns:
+            List of [number, score] pairs sorted by score descending
+        """
+        # Get frequencies
+        frequencies = self.freq_analyzer.get_main_frequencies(draws, start_idx, end_idx)
+        total_draws = end_idx - start_idx + 1
+        
+        # Calculate scores
+        scores = []
+        mid_point = self.config.main_pool // 2
+        
+        # Parse predicted patterns (e.g., "3O2E" means 3 odd, 2 even)
+        predicted_odd_count = int(predicted_oe[0])
+        predicted_even_count = int(predicted_oe[2])
+        predicted_low_count = int(predicted_hl[0])
+        predicted_high_count = int(predicted_hl[2])
+        
+        for num in range(1, self.config.main_pool + 1):
+            # 1. Frequency Score (0-1): normalized frequency
+            freq_score = frequencies[num] / total_draws if total_draws > 0 else 0
+            
+            # 2. Pattern Fit Score (0-1): how well number fits predicted patterns
+            is_odd = (num % 2 == 1)
+            is_low = (num <= mid_point)
+            
+            # Calculate OE fit
+            oe_fit = 0.0
+            if is_odd and predicted_odd_count > 0:
+                oe_fit = 1.0
+            elif not is_odd and predicted_even_count > 0:
+                oe_fit = 1.0
+            else:
+                oe_fit = 0.5  # Neutral if pattern needs both
+            
+            # Calculate HL fit
+            hl_fit = 0.0
+            if is_low and predicted_low_count > 0:
+                hl_fit = 1.0
+            elif not is_low and predicted_high_count > 0:
+                hl_fit = 1.0
+            else:
+                hl_fit = 0.5
+            
+            # Average OE and HL fit
+            pattern_fit_score = (oe_fit + hl_fit) / 2
+            
+            # 3. Calculate weighted final score (80% frequency, 20% pattern fit)
+            final_score = (
+                freq_score * 0.8 +
+                pattern_fit_score * 0.2
+            )
+            
+            scores.append([num, final_score])
+        
+        # Sort by score descending
+        scores.sort(key=lambda x: x[1], reverse=True)
+        
+        return scores
+    
+    def select_numbers_by_score(
+        self,
+        scores: List,
+        predicted_oe: str,
+        predicted_hl: str,
+        count: int
+    ) -> List[int]:
+        """
+        Select top numbers by score that match OE/HL patterns
+        
+        Args:
+            scores: List of [number, score] pairs sorted by score
+            predicted_oe: e.g., "3O2E"
+            predicted_hl: e.g., "2L3H"
+            count: How many numbers to select
+            
+        Returns:
+            List of selected numbers
+        """
+        # Parse target patterns
+        target_odd = int(predicted_oe[0])
+        target_even = int(predicted_oe[2])
+        target_low = int(predicted_hl[0])
+        target_high = int(predicted_hl[2])
+        
+        mid_point = self.config.main_pool // 2
+        
+        # Greedy selection with pattern constraints
+        selected = []
+        current_odd = 0
+        current_even = 0
+        current_low = 0
+        current_high = 0
+        
+        for num, score in scores:
+            if len(selected) >= count:
+                break
+            
+            is_odd = (num % 2 == 1)
+            is_low = (num <= mid_point)
+            
+            # Check if adding this number would violate constraints
+            would_exceed_odd = is_odd and current_odd >= target_odd
+            would_exceed_even = (not is_odd) and current_even >= target_even
+            would_exceed_low = is_low and current_low >= target_low
+            would_exceed_high = (not is_low) and current_high >= target_high
+            
+            if would_exceed_odd or would_exceed_even or would_exceed_low or would_exceed_high:
+                continue
+            
+            # Add number
+            selected.append(num)
+            if is_odd:
+                current_odd += 1
+            else:
+                current_even += 1
+            if is_low:
+                current_low += 1
+            else:
+                current_high += 1
+        
+        # If we couldn't fill all slots (too constrained), fill with highest scores
+        if len(selected) < count:
+            for num, score in scores:
+                if num not in selected:
+                    selected.append(num)
+                    if len(selected) >= count:
+                        break
+        
+        return selected
+    
     def predict(
         self,
         draws: List[Draw],
         start_idx: int,
         end_idx: int
     ) -> Prediction:
-        """Generate prediction using state patterns and frequency"""
+        """Generate prediction using state patterns and weighted scoring"""
         
         # 1. Build state machines
         self.state_machine.build_from_draws(draws, start_idx, end_idx)
@@ -41,27 +195,26 @@ class Strategy01_StatePatternFreq(BaseStrategy):
         current_draw = draws[end_idx]
         current_oe = current_draw.get_oe_pattern(self.config.main_pool)
         current_hl = current_draw.get_hl_pattern(self.config.main_pool)
-        current_sum_bracket = current_draw.get_sum_bracket()
         
         # 3. Calculate streaks
         oe_streak = self.pattern_analyzer.calculate_streak(draws, end_idx, 'OE')
         hl_streak = self.pattern_analyzer.calculate_streak(draws, end_idx, 'HL')
         
-        # 4. Predict next patterns using state machine
+        # 4. Predict next patterns (OE and HL only, no sum constraint)
         predicted_oe = self.state_machine.predict_next_pattern(current_oe, 'OE', oe_streak)
         predicted_hl = self.state_machine.predict_next_pattern(current_hl, 'HL', hl_streak)
-        predicted_sum = self.state_machine.predict_next_pattern(current_sum_bracket, 'SUM', 0)
         
-        # 5. Get frequencies
-        frequencies = self.freq_analyzer.get_main_frequencies(draws, start_idx, end_idx)
+        # 5. Calculate weighted scores for all numbers
+        scores = self.calculate_weighted_scores(
+            draws, start_idx, end_idx,
+            predicted_oe, predicted_hl
+        )
         
-        # 6. Select numbers matching predicted patterns
-        sum_range = parse_sum_bracket(predicted_sum)
-        main_numbers = self.select_numbers_with_constraints(
-            frequencies,
+        # 6. Select numbers by score (respecting OE/HL patterns only)
+        main_numbers = self.select_numbers_by_score(
+            scores,
             predicted_oe,
             predicted_hl,
-            sum_range,
             self.config.main_play_count
         )
         
@@ -70,6 +223,11 @@ class Strategy01_StatePatternFreq(BaseStrategy):
         
         # 8. Calculate confidence
         confidence = self.calculate_confidence(draws, start_idx, end_idx)
+        
+        # 9. Calculate sum bracket from selected numbers (derived, not predicted)
+        actual_sum = sum(main_numbers)
+        bracket_start = (actual_sum // 20) * 20
+        predicted_sum = f"{bracket_start}-{bracket_start + 19}"
         
         return Prediction(
             strategy_id=self.strategy_id,
@@ -84,7 +242,8 @@ class Strategy01_StatePatternFreq(BaseStrategy):
                 'current_oe': current_oe,
                 'current_hl': current_hl,
                 'oe_streak': oe_streak,
-                'hl_streak': hl_streak
+                'hl_streak': hl_streak,
+                'top_scores': scores[:15]  # Top 15 scored numbers for reference
             }
         )
     
