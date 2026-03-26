@@ -140,6 +140,7 @@ def main():
     
     # Fetch or load data
     print(f"\n📥 Loading draw data...")
+    total_draws_loaded = 0
     try:
         # Determine fetch mode
         if args.fetch:
@@ -151,9 +152,34 @@ def main():
         else:
             # Use cache
             draws = loader.get_or_fetch_draws(fetcher, force_refresh=False, incremental=False)
-        print(f"  ✓ Loaded {len(draws)} draws")
+        
+        total_draws_loaded = len(draws)
+        print(f"  ✓ Loaded {total_draws_loaded} draws from file")
         if draws:
-            print(f"  ✓ Range: {draws[0].draw_id} to {draws[-1].draw_id}")
+            print(f"  ✓ Date range: {draws[0].draw_id} to {draws[-1].draw_id}")
+        
+        # Apply max_draws_to_use filter if specified
+        if backtest_config.max_draws_to_use > 0:
+            if total_draws_loaded > backtest_config.max_draws_to_use:
+                # Keep only the most recent N draws
+                draws = draws[-backtest_config.max_draws_to_use:]
+                print(f"  ✓ Filtered to most recent {len(draws)} draws (max_draws_to_use={backtest_config.max_draws_to_use})")
+                print(f"    → Discarded {total_draws_loaded - len(draws)} older draws")
+                print(f"    → New date range: {draws[0].draw_id} to {draws[-1].draw_id}")
+            else:
+                print(f"  ℹ max_draws_to_use={backtest_config.max_draws_to_use} but only {total_draws_loaded} draws available")
+                print(f"    → Using all {total_draws_loaded} draws")
+        
+        # Display final data summary
+        print(f"\n📊 Data Summary:")
+        print(f"  ├─ Total draws loaded: {total_draws_loaded}")
+        print(f"  ├─ Draws to be used: {len(draws)}")
+        if backtest_config.max_draws_to_use > 0 and total_draws_loaded > backtest_config.max_draws_to_use:
+            print(f"  ├─ Filtering applied: YES (kept most recent {len(draws)})")
+        else:
+            print(f"  ├─ Filtering applied: NO (using all available)")
+        print(f"  └─ Final range: {draws[0].draw_id} to {draws[-1].draw_id}")
+        
     except Exception as e:
         print(f"❌ Error loading data: {e}")
         sys.exit(1)
@@ -193,8 +219,21 @@ def main():
     # Run backtest
     if args.backtest:
         print(f"\n🔬 Running backtest...")
-        print(f"  Window size: {backtest_config.window_size}")
-        print(f"  Step size: {backtest_config.step_size}")
+        
+        # Calculate expected number of tests
+        if backtest_config.window_size == 0:
+            expected_tests = 1
+            window_description = "ALL available draws (single prediction mode)"
+        else:
+            available_for_testing = len(draws) - backtest_config.window_size
+            expected_tests = max(0, (available_for_testing - 1) // backtest_config.step_size + 1)
+            window_description = f"{backtest_config.window_size} draws (sliding window)"
+        
+        print(f"\n📋 Backtest Configuration:")
+        print(f"  ├─ Window size: {window_description}")
+        print(f"  ├─ Step size: {backtest_config.step_size}")
+        print(f"  ├─ Data available: {len(draws)} draws")
+        print(f"  └─ Expected tests: ~{expected_tests}")
         
         backtester = RollingWindowBacktester(lottery_config, backtest_config)
         

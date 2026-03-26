@@ -144,6 +144,7 @@ class RollingWindowBacktester:
             'FREQUENCY': [],
             'AVOID_RECENT': [],
             'MARKOV': [],
+            'TRANSITION': [],
             'RANDOM': []
         }
         
@@ -221,6 +222,7 @@ class RollingWindowBacktester:
                 'FREQUENCY': self.joker_predictor.predict_frequency(draws, window_start, window_end),
                 'AVOID_RECENT': self.joker_predictor.predict_avoid_recent(draws, window_start, window_end),
                 'MARKOV': self.joker_predictor.predict_markov(draws, window_start, window_end),
+                'TRANSITION': self.joker_predictor.predict_transition(draws, window_start, window_end),
                 'RANDOM': self.joker_predictor.predict_random()
             }
             

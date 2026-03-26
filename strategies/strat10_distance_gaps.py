@@ -18,6 +18,8 @@ import numpy as np
 from strategies.base_strategy import BaseStrategy
 from models import Draw, Prediction
 from config import LotteryConfig
+from analyzers.state_machine import StateMachine
+from analyzers.frequency_analyzer import PatternAnalyzer
 
 
 class DistanceGapsCalculator:
@@ -268,6 +270,8 @@ class Strategy10_DistanceGaps(BaseStrategy):
         self.bin_size = bin_size
         self.threshold = threshold
         self.calculator = DistanceGapsCalculator(lottery_config, bin_size, threshold)
+        self.state_machine = StateMachine(lottery_config)
+        self.pattern_analyzer = PatternAnalyzer(lottery_config)
 
     def predict(self, draws: List[Draw], start_idx: int, end_idx: int) -> Prediction:
         """
@@ -310,31 +314,33 @@ class Strategy10_DistanceGaps(BaseStrategy):
             # Combine results from both statistics
             combined_scores = self.calculator.calculate_combined_scores(statistics_results)
             
-            # Extract top predictions (prefer scored numbers)
-            scored_numbers = [entry for entry in combined_scores if entry[1] > 0]
-            if not scored_numbers:
-                scored_numbers = combined_scores  # Fallback to all numbers
+            # BUILD STATE MACHINE AND PREDICT PATTERNS
+            self.state_machine.build_from_draws(draws, start_idx, end_idx)
             
-            # Select top N numbers
-            main_numbers = [entry[0] for entry in scored_numbers[:self.config.main_play_count]]
+            current_draw = draws[end_idx]
+            current_oe = current_draw.get_oe_pattern(self.config.main_pool)
+            current_hl = current_draw.get_hl_pattern(self.config.main_pool)
             
-            # Ensure we have enough unique numbers
-            if len(main_numbers) < self.config.main_play_count:
-                remaining = self.config.main_play_count - len(main_numbers)
-                available = [n for n in range(1, self.config.main_pool + 1) if n not in main_numbers]
-                main_numbers.extend(list(np.random.choice(available, size=remaining, replace=False)))
+            oe_streak = self.pattern_analyzer.calculate_streak(draws, end_idx, 'OE')
+            hl_streak = self.pattern_analyzer.calculate_streak(draws, end_idx, 'HL')
+            
+            predicted_oe = self.state_machine.predict_next_pattern(current_oe, 'OE', oe_streak)
+            predicted_hl = self.state_machine.predict_next_pattern(current_hl, 'HL', hl_streak)
+            
+            # Parse pattern requirements
+            target_odd = int(predicted_oe[0])
+            target_even = int(predicted_oe[2])
+            target_low = int(predicted_hl[0])
+            target_high = int(predicted_hl[2])
+            
+            # SELECT FROM SCORED LIST RESPECTING OE+HL CONSTRAINTS
+            main_numbers = self._select_with_constraints(
+                combined_scores,
+                target_odd, target_even,
+                target_low, target_high
+            )
             
             main_numbers = sorted(main_numbers)
-            
-            # FIXED: Predict patterns based on selected numbers (not copying last draw)
-            num_odd = sum(1 for n in main_numbers if n % 2 == 1)
-            num_even = len(main_numbers) - num_odd
-            predicted_oe = f"{num_odd}O{num_even}E"
-            
-            mid_point = self.config.main_pool // 2
-            num_low = sum(1 for n in main_numbers if n <= mid_point)
-            num_high = len(main_numbers) - num_low
-            predicted_hl = f"{num_low}L{num_high}H"
             
             total_sum = sum(main_numbers)
             bracket_start = (total_sum // 20) * 20
@@ -361,7 +367,12 @@ class Strategy10_DistanceGaps(BaseStrategy):
                     'window_size': window_size,
                     'mean_top_5': [s[0] for s in statistics_results['mean']['scores'][:5]],
                     'median_top_5': [s[0] for s in statistics_results['median']['scores'][:5]],
-                    'consensus_count': sum(1 for s in combined_scores if s[1] > 0)
+                    'consensus_count': sum(1 for s in combined_scores if s[1] > 0),
+                    'current_oe': current_oe,
+                    'current_hl': current_hl,
+                    'oe_streak': oe_streak,
+                    'hl_streak': hl_streak,
+                    'constraints_applied': True
                 }
             )
             
@@ -404,6 +415,88 @@ class Strategy10_DistanceGaps(BaseStrategy):
             confidence_score=0.3,
             metadata=metadata
         )
+
+    def _select_with_constraints(
+        self,
+        scored_numbers: List[List],
+        target_odd: int,
+        target_even: int,
+        target_low: int,
+        target_high: int
+    ) -> List[int]:
+        """
+        Select numbers from scored list respecting OE+HL constraints
+        
+        Args:
+            scored_numbers: List of [number, score, gap, distance] sorted by score
+            target_odd/even/low/high: Pattern requirements
+            
+        Returns:
+            List of selected numbers matching constraints
+        """
+        mid_point = self.config.main_pool // 2
+        
+        selected = []
+        needed_odd = target_odd
+        needed_even = target_even
+        needed_low = target_low
+        needed_high = target_high
+        
+        # First pass: select from scored numbers matching constraints
+        for entry in scored_numbers:
+            if len(selected) >= self.config.main_play_count:
+                break
+            
+            num = entry[0]
+            if num in selected:
+                continue
+            
+            is_odd = (num % 2 == 1)
+            is_low = (num <= mid_point)
+            
+            # Check if number satisfies BOTH OE and HL constraints
+            can_add = False
+            
+            if is_odd and is_low:
+                if needed_odd > 0 and needed_low > 0:
+                    can_add = True
+                    needed_odd -= 1
+                    needed_low -= 1
+            elif is_odd and not is_low:  # Odd + High
+                if needed_odd > 0 and needed_high > 0:
+                    can_add = True
+                    needed_odd -= 1
+                    needed_high -= 1
+            elif not is_odd and is_low:  # Even + Low
+                if needed_even > 0 and needed_low > 0:
+                    can_add = True
+                    needed_even -= 1
+                    needed_low -= 1
+            else:  # Even + High
+                if needed_even > 0 and needed_high > 0:
+                    can_add = True
+                    needed_even -= 1
+                    needed_high -= 1
+            
+            if can_add:
+                selected.append(num)
+        
+        # Second pass: if still need more, add any remaining from scored list
+        if len(selected) < self.config.main_play_count:
+            for entry in scored_numbers:
+                num = entry[0]
+                if num not in selected:
+                    selected.append(num)
+                    if len(selected) >= self.config.main_play_count:
+                        break
+        
+        # Final fallback: random if still not enough
+        if len(selected) < self.config.main_play_count:
+            remaining = self.config.main_play_count - len(selected)
+            available = [n for n in range(1, self.config.main_pool + 1) if n not in selected]
+            selected.extend(list(np.random.choice(available, size=remaining, replace=False)))
+        
+        return selected[:self.config.main_play_count]
 
     def calculate_confidence(self, draws: List[Draw], start_idx: int, end_idx: int) -> float:
         """

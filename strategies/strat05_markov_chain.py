@@ -152,6 +152,47 @@ class Strategy05_MarkovChain(BaseStrategy):
         
         return valid_predictions
     
+    def _count_consecutives(self, numbers: List[int]) -> int:
+        """
+        Count the maximum consecutive run in a sorted list
+        
+        Args:
+            numbers: Sorted list of numbers
+            
+        Returns:
+            Maximum consecutive count (e.g., [15,16,17] returns 3)
+        """
+        if len(numbers) < 2:
+            return 1
+        
+        sorted_nums = sorted(numbers)
+        max_consecutive = 1
+        current_consecutive = 1
+        
+        for i in range(1, len(sorted_nums)):
+            if sorted_nums[i] == sorted_nums[i-1] + 1:
+                current_consecutive += 1
+                max_consecutive = max(max_consecutive, current_consecutive)
+            else:
+                current_consecutive = 1
+        
+        return max_consecutive
+    
+    def _breaks_consecutive_limit(self, selected: List[int], new_num: int, max_consecutive: int = 2) -> bool:
+        """
+        Check if adding new_num would create too many consecutives
+        
+        Args:
+            selected: Currently selected numbers
+            new_num: Number to potentially add
+            max_consecutive: Maximum allowed consecutive run
+            
+        Returns:
+            True if adding new_num would violate limit
+        """
+        test_list = sorted(selected + [new_num])
+        return self._count_consecutives(test_list) > max_consecutive
+    
     def select_with_constraints(
         self,
         candidate_numbers: List[int],
@@ -226,9 +267,34 @@ class Strategy05_MarkovChain(BaseStrategy):
                     needed_high -= 1
             
             if can_add:
-                selected.append(num)
+                # Additional check: don't create 3+ consecutives
+                if not self._breaks_consecutive_limit(selected, num, max_consecutive=2):
+                    selected.append(num)
+                else:
+                    # Revert quota decrements since we're not adding
+                    if is_odd and is_low:
+                        needed_odd += 1
+                        needed_low += 1
+                    elif is_odd and not is_low:
+                        needed_odd += 1
+                        needed_high += 1
+                    elif not is_odd and is_low:
+                        needed_even += 1
+                        needed_low += 1
+                    else:
+                        needed_even += 1
+                        needed_high += 1
         
-        # Second pass: if still need more, add best remaining
+        # Second pass: if still need more, add best remaining (avoid 3+ consecutives)
+        if len(selected) < self.config.main_play_count:
+            for num, score in scored:
+                if num not in selected:
+                    if not self._breaks_consecutive_limit(selected, num, max_consecutive=2):
+                        selected.append(num)
+                        if len(selected) >= self.config.main_play_count:
+                            break
+        
+        # Final fallback: if still not enough, add any remaining (ignore consecutive check)
         if len(selected) < self.config.main_play_count:
             for num, score in scored:
                 if num not in selected:
@@ -311,7 +377,9 @@ class Strategy05_MarkovChain(BaseStrategy):
                 'current_oe': current_oe,
                 'current_hl': current_hl,
                 'oe_streak': oe_streak,
-                'hl_streak': hl_streak
+                'hl_streak': hl_streak,
+                'consecutive_limit': 2,
+                'constraints_applied': 'OE+HL+Consecutive'
             }
         )
     

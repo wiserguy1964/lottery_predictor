@@ -1,5 +1,5 @@
 """
-Joker/Bonus number predictor with 4 independent methods and dynamic weighting
+Joker/Bonus number predictor with 5 independent methods and dynamic weighting
 """
 from typing import List, Dict
 import numpy as np
@@ -11,11 +11,12 @@ from config import LotteryConfig
 
 class JokerPredictor:
     """
-    Independent bonus number prediction with 4 methods:
+    Independent bonus number prediction with 5 methods:
     1. Frequency Method - Most common bonus in window
     2. Avoid Recent Method - Least frequent non-recent bonus
     3. Markov Method - Sequence-based transition prediction
-    4. Random Method - Truly random bonus selection
+    4. Transition Method - Sorted position transition logic for JOKER
+    5. Random Method - Truly random bonus selection
     
     Uses dynamic weighting based on recent performance.
     """
@@ -28,7 +29,7 @@ class JokerPredictor:
             lottery_config: Lottery configuration
         """
         self.config = lottery_config
-        self.method_names = ['FREQUENCY', 'AVOID_RECENT', 'MARKOV', 'RANDOM']
+        self.method_names = ['FREQUENCY', 'AVOID_RECENT', 'MARKOV', 'TRANSITION', 'RANDOM']
         
         # Performance tracking for dynamic weighting
         self.method_performance: Dict[str, Dict[str, float]] = {
@@ -191,6 +192,106 @@ class JokerPredictor:
         
         return sorted(result[:count])
     
+    def predict_transition(
+        self,
+        draws: List[Draw],
+        start_idx: int,
+        end_idx: int
+    ) -> List[int]:
+        """
+        Method 4: Transition-based prediction (sorted position logic for bonus numbers)
+        
+        Tracks: "After seeing bonus number X in position i, what appeared in position i next draw?"
+        
+        LOTTERY-AGNOSTIC:
+        - OPAP JOKER (1 bonus): Tracks position 0 only
+        - EuroJackpot (2 bonuses): Tracks position 0 AND position 1 separately
+        
+        Example for EuroJackpot:
+          Draw 100: bonuses = [5, 8]  (sorted: [5, 8])
+                                ↓   ↓
+                               P0  P1
+          Draw 101: bonuses = [3, 9]  (sorted: [3, 9])
+                                ↓   ↓
+                               P0  P1
+          
+          Transitions learned:
+            P0: 5 → 3
+            P1: 8 → 9
+        
+        Args:
+            draws: Historical draws
+            start_idx: Start of window
+            end_idx: End of window (inclusive)
+            
+        Returns:
+            List of predicted bonus numbers based on transition history
+        """
+        # Build transition frequency table PER POSITION
+        # transitions[position][current_bonus][next_bonus] = count
+        transitions = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        
+        for i in range(start_idx, end_idx):
+            if i + 1 >= len(draws):
+                break
+            
+            if draws[i].bonus_numbers and draws[i + 1].bonus_numbers:
+                # Sort bonus numbers to create consistent positions
+                current_sorted = sorted([int(b) for b in draws[i].bonus_numbers])
+                next_sorted = sorted([int(b) for b in draws[i + 1].bonus_numbers])
+                
+                # Track transitions for each position
+                max_pos = min(len(current_sorted), len(next_sorted))
+                for pos in range(max_pos):
+                    current_bonus = current_sorted[pos]
+                    next_bonus = next_sorted[pos]
+                    transitions[pos][current_bonus][next_bonus] += 1
+        
+        # Get current bonuses to predict from
+        current_sorted = []
+        if end_idx < len(draws) and draws[end_idx].bonus_numbers:
+            current_sorted = sorted([int(b) for b in draws[end_idx].bonus_numbers])
+        
+        count = self.config.bonus_play_count
+        result = []
+        
+        # Predict for each position based on transitions
+        for pos in range(min(len(current_sorted), count)):
+            current_bonus = current_sorted[pos]
+            
+            if pos in transitions and current_bonus in transitions[pos]:
+                trans_counts = transitions[pos][current_bonus]
+                
+                if trans_counts:
+                    # Find most common transition for this position
+                    most_common = max(trans_counts.items(), key=lambda x: x[1])[0]
+                    if most_common not in result:
+                        result.append(most_common)
+        
+        # Fallback to frequency if no transitions or need more
+        if len(result) < count:
+            # Get overall bonus frequencies as fallback
+            bonus_freq = Counter()
+            for i in range(start_idx, end_idx + 1):
+                if i < len(draws) and draws[i].bonus_numbers:
+                    for bonus in draws[i].bonus_numbers:
+                        bonus_freq[int(bonus)] += 1
+            
+            # Add top frequent not already in result
+            for bonus, freq in bonus_freq.most_common():
+                if bonus not in result:
+                    result.append(bonus)
+                    if len(result) >= count:
+                        break
+        
+        # Fill with random if still needed
+        while len(result) < count:
+            rand = np.random.randint(1, self.config.bonus_pool + 1)
+            if rand not in result:
+                result.append(rand)
+        
+        return sorted(result[:count])
+    
     def predict_random(self) -> List[int]:
         """
         Method 4: Purely random bonus selection
@@ -227,6 +328,7 @@ class JokerPredictor:
             'FREQUENCY': self.predict_frequency(draws, start_idx, end_idx),
             'AVOID_RECENT': self.predict_avoid_recent(draws, start_idx, end_idx),
             'MARKOV': self.predict_markov(draws, start_idx, end_idx),
+            'TRANSITION': self.predict_transition(draws, start_idx, end_idx),
             'RANDOM': self.predict_random()
         }
         
