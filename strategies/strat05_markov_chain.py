@@ -231,7 +231,7 @@ class Strategy05_MarkovChain(BaseStrategy):
         needed_low = target_low
         needed_high = target_high
         
-        # First pass: select numbers matching constraints
+        # First pass: select numbers matching OE+HL+Consecutive constraints
         for num, score in scored:
             if len(selected) >= self.config.main_play_count:
                 break
@@ -285,7 +285,7 @@ class Strategy05_MarkovChain(BaseStrategy):
                         needed_even += 1
                         needed_high += 1
         
-        # Second pass: if still need more, add best remaining (avoid 3+ consecutives)
+        # Second pass: if still need more, ignore OE+HL but keep consecutive limit
         if len(selected) < self.config.main_play_count:
             for num, score in scored:
                 if num not in selected:
@@ -294,7 +294,16 @@ class Strategy05_MarkovChain(BaseStrategy):
                         if len(selected) >= self.config.main_play_count:
                             break
         
-        # Final fallback: if still not enough, add any remaining (ignore consecutive check)
+        # Third pass: if still need more, try again with ONLY consecutive check
+        if len(selected) < self.config.main_play_count:
+            for num, score in scored:
+                if num not in selected:
+                    if not self._breaks_consecutive_limit(selected, num, max_consecutive=2):
+                        selected.append(num)
+                        if len(selected) >= self.config.main_play_count:
+                            break
+        
+        # ABSOLUTE FINAL fallback: if STILL not enough, ignore all constraints (rare)
         if len(selected) < self.config.main_play_count:
             for num, score in scored:
                 if num not in selected:
