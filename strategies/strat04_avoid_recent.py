@@ -28,7 +28,7 @@ class Strategy04_AvoidRecent(BaseStrategy):
     """
     
     def __init__(self, lottery_config: LotteryConfig):
-        super().__init__(lottery_config, "STRAT04", "Avoid Recent Numbers")
+        super().__init__(lottery_config, "STRAT04", "Recent Numbers Strategy")
         self.freq_analyzer = FrequencyAnalyzer(lottery_config)
         self.pattern_analyzer = PatternAnalyzer(lottery_config)
         self.state_machine = StateMachine(lottery_config)

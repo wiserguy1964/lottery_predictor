@@ -27,7 +27,7 @@ class Strategy02_PureFrequency(BaseStrategy):
     """
     
     def __init__(self, lottery_config: LotteryConfig):
-        super().__init__(lottery_config, "STRAT02", "Pure Frequency Based")
+        super().__init__(lottery_config, "STRAT02", "Temperature Zones (Hot/Warm/Cold)")
         self.freq_analyzer = FrequencyAnalyzer(lottery_config)
         self.pattern_analyzer = PatternAnalyzer(lottery_config)
         self.state_machine = StateMachine(lottery_config)

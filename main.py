@@ -245,6 +245,18 @@ def main():
             summaries = backtester.calculate_summary_metrics(results)
             rankings = backtester.rank_strategies(summaries)
             
+            # Strategy descriptions (based on ACTUAL implementation, not misleading names)
+            strategy_descriptions = {
+                'STRAT01': 'State Patterns + Frequency',
+                'STRAT02': 'Temperature Zones (Hot/Warm/Cold)',  # NOT "Pure Frequency" - uses temp categories
+                'STRAT03': 'State Patterns + Random',
+                'STRAT04': 'Recent Numbers Strategy',  # NOT "Avoid" - EMBRACES recent numbers!
+                'STRAT05': 'Sorted Position Transitions',  # NOT just "Markov Chain" - specific approach
+                'STRAT08': 'Multi-Signal Consensus',
+                'STRAT09': 'Monte Carlo Pattern Match',
+                'STRAT10': 'Distance Gaps Analysis'
+            }
+            
             # Display results
             print("\n" + "=" * 70)
             print("BACKTEST RESULTS")
@@ -255,7 +267,11 @@ def main():
                     continue
                 
                 metrics = summaries[strategy_id]
+                description = strategy_descriptions.get(strategy_id, '')
+                
                 print(f"\n{rank}. {strategy_id} (Score: {score:.1f})")
+                if description:
+                    print(f"   📋 {description}")
                 print(f"   Main Matches: {metrics['avg_main_matches']:.3f}")
                 
                 # Show distribution info for STRAT04
